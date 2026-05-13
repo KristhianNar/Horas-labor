@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tablero Horas Labor · Super de Alimentos</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+  :root {
+    --brand: #E30613;
+    --brand-dark: #a00510;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --bg: #f5f6fa;
+    --card: #ffffff;
+    --accent: #0ea5e9;
+    --ok: #10b981;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+  }
+  html,body { background: var(--bg); color: var(--ink); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .navbar-brand { font-weight: 700; letter-spacing: .3px; }
+  .topbar { background: linear-gradient(90deg, var(--brand) 0%, var(--brand-dark) 100%); color: #fff; }
+  .topbar .bi { font-size: 1.4rem; }
+  .card-soft { background: var(--card); border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .kpi { padding: 1rem 1.1rem; border-radius: 14px; background: #fff; border: 1px solid #e5e7eb; }
+  .kpi .label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .kpi .value { font-size: 1.65rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
+  .kpi .icon { width: 44px; height: 44px; border-radius: 12px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.1rem; }
+  .filter-chip { font-size: .78rem; background:#eef2ff; color:#3730a3; padding:.18rem .55rem; border-radius:9999px; margin-right:.25rem; }
+  .chart-holder { position: relative; height: 360px; }
+  .chart-holder-lg { position: relative; height: 420px; }
+  .nav-tabs .nav-link { color: var(--ink); font-weight: 500; border: none; border-bottom: 2px solid transparent; }
+  .nav-tabs .nav-link.active { color: var(--brand); border-color: var(--brand); background: transparent; }
+  .tab-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 0 14px 14px 14px; padding: 1.25rem; }
+  .var-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem 1.1rem; }
+  .var-card .delta { font-size: 1.35rem; font-weight: 700; }
+  .var-card .delta.up  { color: var(--ok); }
+  .var-card .delta.down{ color: var(--bad); }
+  .var-card .delta.flat{ color: var(--muted); }
+  .var-card .desc { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .badge-soft { background: #f1f5f9; color:#334155; font-weight:500; }
+  .form-select, .form-control { border-radius: 10px; }
+  .btn-primary-brand { background: var(--brand); color:#fff; border:none; }
+  .btn-primary-brand:hover { background: var(--brand-dark); color:#fff; }
+  .section-title { font-weight: 700; color: var(--ink); }
+  .help { color: var(--muted); font-size:.85rem; }
+  .tab-filters { background:#f8fafc; padding:.85rem; border-radius: 10px; border:1px solid #e5e7eb; }
+  .empty-msg { color:var(--muted); font-style: italic; padding: 2rem; text-align:center; }
+  .metric-pill { font-size: .78rem; background:#fef3c7; color:#92400e; padding:.15rem .55rem; border-radius: 9999px; }
+  @media (max-width: 768px){
+    .chart-holder { height: 300px; }
+    .chart-holder-lg { height: 320px; }
+  }
+</style>
+</head>
+<body>
+<nav class="topbar py-3 px-3 shadow-sm">
+  <div class="container-fluid d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-clock-history"></i>
+      <span class="navbar-brand mb-0 h5 text-white">Tablero Horas Labor</span>
+      <span class="badge bg-light text-dark ms-2">Generado: {{ GENERATED_AT }}</span>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="filter-chip"><i class="bi bi-database"></i> {{ SOURCE_FILE }}</span>
+      <span class="filter-chip"><i class="bi bi-table"></i> {{ ROWS_COUNT }} filas</span>
+      <button class="btn btn-sm btn-light" id="btnExportCSV"><i class="bi bi-download"></i> Exportar CSV</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid py-4 px-3 px-md-4">
+
+  <!-- Filtros globales -->
+  <div class="card-soft p-3 mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+      <h5 class="section-title mb-0"><i class="bi bi-funnel"></i> Filtros globales</h5>
+      <button class="btn btn-outline-secondary btn-sm" id="btnResetGlobal"><i class="bi bi-arrow-counterclockwise"></i> Limpiar</button>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label fw-semibold small">Año</label>
+        <select id="fYear" class="form-select" multiple size="3"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold small">Área</label>
+        <select id="fArea" class="form-select" multiple size="5"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold small">Subárea</label>
+        <select id="fSubarea" class="form-select" multiple size="5"></select>
+      </div>
+    </div>
+    <div class="small help mt-2"><i class="bi bi-info-circle"></i> Mantén Ctrl/Cmd para seleccionar varios. Vacío = todos. <strong>Granularidad temporal: semanal</strong> (2025: 1-27 individuales + semanas-bloque 28,31,34,37,40,43,46,49,52 ya consolidadas en origen; 2026: viene bloqueada).</div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-3 mb-4" id="kpiRow"></div>
+
+  <!-- Gráfica principal: Total Horas Laboradas por semana -->
+  <div class="card-soft p-3 mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+      <div>
+        <h5 class="section-title mb-0"><i class="bi bi-graph-up"></i> Total Horas Laboradas — Evolución semanal</h5>
+        <div class="help">Suma de TLB_TotalHorasLaboradas por semana-año, con número total de colaboradores (cédulas únicas).</div>
+      </div>
+      <span class="badge badge-soft"><i class="bi bi-calendar3"></i> Semana × Año</span>
+    </div>
+    <div class="chart-holder-lg"><canvas id="chartMain"></canvas></div>
+  </div>
+
+  <!-- Gráfica por área -->
+  <div class="card-soft p-3 mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+      <div>
+        <h5 class="section-title mb-0"><i class="bi bi-building"></i> Total Horas Laboradas por Área</h5>
+        <div class="help">Suma agrupada por TLB_Area, con número total de colaboradores.</div>
+      </div>
+      <span class="badge badge-soft"><i class="bi bi-layers"></i> Agrupación: Área</span>
+    </div>
+    <div class="chart-holder"><canvas id="chartByArea"></canvas></div>
+  </div>
+
+  <!-- Pestañas por variable -->
+  <div class="card-soft p-3 mb-4">
+    <h5 class="section-title mb-3"><i class="bi bi-layout-text-window-reverse"></i> Análisis detallado por variable</h5>
+    <ul class="nav nav-tabs flex-wrap" role="tablist" id="varTabs"></ul>
+    <div class="tab-content" id="varTabContent"></div>
+  </div>
+
+  <div class="text-center small help py-4">
+    <i class="bi bi-info-circle"></i> Tablero generado automáticamente desde HorasLab.xlsx · Datos embebidos para funcionamiento offline.
+  </div>
+</div>
+
+<script>
+const DASHBOARD_DATA = {{ DASHBOARD_DATA }};
+
+const METRICS = [
+  { key:'v0',  id:'HorasDiurnasOrdinarias',           label:'Horas Diurnas Ordinarias' },
+  { key:'v1',  id:'HorasNocturnasOrdinarias',         label:'Horas Nocturnas Ordinarias' },
+  { key:'v2',  id:'HorasExtraDiurnas',                label:'Horas Extra Diurnas' },
+  { key:'v3',  id:'HorasExtraNocturnas',              label:'Horas Extra Nocturnas' },
+  { key:'v4',  id:'HorasExtraFestivasDiurnas',        label:'Horas Extra Festivas Diurnas' },
+  { key:'v5',  id:'HorasExtraFestivasNocturnas',      label:'Horas Extra Festivas Nocturnas' },
+  { key:'v6',  id:'HorasFestivasDiurnasDiaDescanso',  label:'Horas Festivas Diurnas Día Descanso' },
+  { key:'v7',  id:'HorasFestivasNocturnasDiaDescanso',label:'Horas Festivas Nocturnas Día Descanso' },
+  { key:'v8',  id:'HorasDiurnasDiaDescanso',          label:'Horas Diurnas Día Descanso' },
+  { key:'v9',  id:'HorasNocturnasDiaDescanso',        label:'Horas Nocturnas Día Descanso' },
+  { key:'v10', id:'TotalHorasOrdinarias',             label:'Total Horas Ordinarias' },
+  { key:'v12', id:'HorasExtra',                       label:'Horas Extra' },
+  { key:'v13', id:'ExcesoHorasExtras',                label:'Exceso Horas Extras' }
+];
+const TOTAL_KEY = 'v11'; // TLB_TotalHorasLaboradas
+
+const PALETTE = ['#E30613','#0ea5e9','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f43f5e','#6366f1','#84cc16','#06b6d4','#d946ef','#fb923c','#22c55e','#a855f7','#eab308'];
+
+// Unique weeks (sorted) available in data
+const ALL_WEEKS = Array.from(new Set(DASHBOARD_DATA.data.w)).sort((a,b)=>a-b);
+
+// Build list of (year, week) periods present in the data (sorted chronologically)
+const ALL_PERIODS = (function(){
+  const D = DASHBOARD_DATA.data;
+  const set = new Map();
+  for (let i=0;i<D.y.length;i++){
+    const k = D.y[i]+'_'+D.w[i];
+    if (!set.has(k)) set.set(k, { yIdx: D.y[i], w: D.w[i] });
+  }
+  return Array.from(set.values()).sort((a,b) => {
+    const ya = DASHBOARD_DATA.years[a.yIdx], yb = DASHBOARD_DATA.years[b.yIdx];
+    if (ya !== yb) return ya - yb;
+    return a.w - b.w;
+  });
+})();
+
+function periodLabel(yearIdx, week){
+  return 'Sem ' + week + ' · ' + DASHBOARD_DATA.years[yearIdx];
+}
+function shortPeriodLabel(year, week){
+  return 'S' + week + '/' + String(year).slice(-2);
+}
+
+const state = {
+  yearSel: new Set(),
+  areaSel: new Set(),
+  subareaSel: new Set()
+};
+
+// ---- Helpers ----
+function fmtNum(n, digits=0){
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  return n.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+function fmtHoras(n){ return fmtNum(n, 0) + ' h'; }
+function fmtPct(n){
+  if (n === null || n === undefined || !isFinite(n)) return '-';
+  const sign = n > 0 ? '+' : '';
+  return sign + n.toFixed(1) + '%';
+}
+
+function populateSelect(el, items, labels){
+  el.innerHTML = '';
+  items.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = labels ? labels[i] : v;
+    el.appendChild(opt);
+  });
+}
+
+function readMultiSelect(el){
+  return new Set(Array.from(el.selectedOptions).map(o => +o.value));
+}
+
+// ---- Filtering core ----
+function filterRowIdx(sel) {
+  const D = DASHBOARD_DATA.data;
+  const n = D.y.length;
+  const idx = [];
+  const yearOn = sel.years && sel.years.size;
+  const areaOn = sel.areas && sel.areas.size;
+  const subOn  = sel.subareas && sel.subareas.size;
+  const wkOn   = sel.weeks && sel.weeks.size;
+  for (let i = 0; i < n; i++) {
+    if (yearOn && !sel.years.has(D.y[i])) continue;
+    if (areaOn && !sel.areas.has(D.a[i])) continue;
+    if (subOn  && !sel.subareas.has(D.s[i])) continue;
+    if (wkOn   && !sel.weeks.has(D.w[i])) continue;
+    idx.push(i);
+  }
+  return idx;
+}
+
+function sumMetric(idx, key){
+  const arr = DASHBOARD_DATA.data[key];
+  let s = 0;
+  for (const i of idx) s += arr[i];
+  return s;
+}
+function uniqueCedulasCount(idx){
+  const D = DASHBOARD_DATA.data;
+  const set = new Set();
+  for (const i of idx) set.add(D.c[i]);
+  return set.size;
+}
+
+// Group helpers — by (year, week_bucket)
+function groupByYearWeek(idx, valueKey){
+  const D = DASHBOARD_DATA.data;
+  const groups = new Map();
+  for (const i of idx) {
+    const yIdx = D.y[i];
+    const w = D.w[i];
+    const key = yIdx*1000 + w;
+    if (!groups.has(key)) groups.set(key, { yearIdx:yIdx, year:DASHBOARD_DATA.years[yIdx], week:w, sum:0, ced:new Set() });
+    const g = groups.get(key);
+    g.sum += D[valueKey][i];
+    g.ced.add(D.c[i]);
+  }
+  return Array.from(groups.values()).sort((a,b) => (a.year-b.year)||(a.week-b.week));
+}
+function groupByArea(idx, valueKey){
+  const D = DASHBOARD_DATA.data;
+  const groups = new Map();
+  for (const i of idx) {
+    const a = D.a[i];
+    if (!groups.has(a)) groups.set(a, { areaIdx:a, area:DASHBOARD_DATA.areas[a], sum:0, ced:new Set() });
+    const g = groups.get(a);
+    g.sum += D[valueKey][i];
+    g.ced.add(D.c[i]);
+  }
+  return Array.from(groups.values()).sort((a,b) => b.sum - a.sum);
+}
+
+// ---- Global KPIs ----
+function renderKPIs(idx){
+  const totalHL = sumMetric(idx, TOTAL_KEY);
+  const totalHO = sumMetric(idx, 'v10');
+  const totalHE = sumMetric(idx, 'v12');
+  const totalExc = sumMetric(idx, 'v13');
+  const ced = uniqueCedulasCount(idx);
+  const pctExtra = totalHL > 0 ? (totalHE / totalHL) * 100 : 0;
+
+  const kpis = [
+    { label:'Total Horas Laboradas', value: fmtHoras(totalHL), icon:'bi-clock', color:'#E30613' },
+    { label:'Colaboradores únicos',  value: fmtNum(ced),        icon:'bi-people-fill', color:'#0ea5e9' },
+    { label:'Horas Ordinarias',      value: fmtHoras(totalHO),  icon:'bi-clock-history', color:'#10b981' },
+    { label:'Horas Extra',           value: fmtHoras(totalHE),  icon:'bi-lightning-charge', color:'#f59e0b' },
+    { label:'% Horas Extra',         value: pctExtra.toFixed(1)+'%', icon:'bi-percent', color:'#8b5cf6' },
+    { label:'Exceso Horas Extras',   value: fmtHoras(totalExc), icon:'bi-exclamation-triangle', color:'#ef4444' }
+  ];
+  const row = document.getElementById('kpiRow');
+  row.innerHTML = '';
+  kpis.forEach(k => {
+    const col = document.createElement('div');
+    col.className = 'col-md-4 col-lg-2';
+    col.innerHTML = `
+      <div class="kpi d-flex align-items-center gap-3">
+        <div class="icon" style="background:${k.color}"><i class="bi ${k.icon}"></i></div>
+        <div>
+          <div class="label">${k.label}</div>
+          <div class="value">${k.value}</div>
+        </div>
+      </div>`;
+    row.appendChild(col);
+  });
+}
+
+// ---- Main chart ----
+let chartMainInst, chartByAreaInst;
+function renderMainChart(idx){
+  const groups = groupByYearWeek(idx, TOTAL_KEY);
+  const labels = groups.map(g => shortPeriodLabel(g.year, g.week));
+  const values = groups.map(g => Math.round(g.sum));
+  const ceds = groups.map(g => g.ced.size);
+
+  const ctx = document.getElementById('chartMain').getContext('2d');
+  if (chartMainInst) chartMainInst.destroy();
+  chartMainInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { type:'bar', label:'Total Horas Laboradas', data: values, backgroundColor: 'rgba(227,6,19,0.75)', borderRadius: 4, yAxisID:'y' },
+        { type:'line', label:'Colaboradores únicos', data: ceds, borderColor: '#0ea5e9', backgroundColor:'#0ea5e9', tension:.3, yAxisID:'y1', fill:false, pointRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect: false },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            title: (ctx) => {
+              const i = ctx[0].dataIndex;
+              return 'Semana ' + groups[i].week + ' — ' + groups[i].year;
+            },
+            label: (c) => {
+              if (c.dataset.type === 'line') return c.dataset.label + ': ' + fmtNum(c.parsed.y);
+              return c.dataset.label + ': ' + fmtHoras(c.parsed.y);
+            }
+          }
+        }
+      },
+      scales: {
+        y:  { position:'left',  title:{ display:true, text:'Horas' },        ticks: { callback: v => fmtNum(v) } },
+        y1: { position:'right', title:{ display:true, text:'Colaboradores' }, grid:{ drawOnChartArea: false }, ticks: { callback: v => fmtNum(v) } },
+        x:  { ticks: { autoSkip: true, maxRotation: 45, minRotation: 0 } }
+      }
+    }
+  });
+}
+
+function renderAreaChart(idx){
+  const groups = groupByArea(idx, TOTAL_KEY);
+  const labels = groups.map(g => g.area);
+  const values = groups.map(g => Math.round(g.sum));
+  const ceds = groups.map(g => g.ced.size);
+  const ctx = document.getElementById('chartByArea').getContext('2d');
+  if (chartByAreaInst) chartByAreaInst.destroy();
+  chartByAreaInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'Horas Laboradas', data: values, backgroundColor: labels.map((_,i)=>PALETTE[i%PALETTE.length]), borderRadius: 4 },
+        { type:'line', label:'Colaboradores únicos', data: ceds, borderColor: '#111827', backgroundColor:'#111827', tension:.3, yAxisID:'y1', fill:false, pointRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'x',
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: (c) => c.dataset.type === 'line' ? c.dataset.label+': '+fmtNum(c.parsed.y) : c.dataset.label+': '+fmtHoras(c.parsed.y)
+          }
+        }
+      },
+      scales: {
+        y: { title:{ display:true, text:'Horas' }, ticks: { callback: v => fmtNum(v) } },
+        y1:{ position:'right', title:{ display:true, text:'Colaboradores' }, grid:{ drawOnChartArea:false }, ticks:{ callback: v => fmtNum(v) } },
+        x: { ticks: { maxRotation: 45, minRotation: 30 } }
+      }
+    }
+  });
+}
+
+// ---- Tabs ----
+function buildTabs(){
+  const tabs = document.getElementById('varTabs');
+  const content = document.getElementById('varTabContent');
+  tabs.innerHTML = '';
+  content.innerHTML = '';
+  METRICS.forEach((m, i) => {
+    const tabId = 'tab-'+m.id;
+    const panelId = 'panel-'+m.id;
+    const li = document.createElement('li');
+    li.className = 'nav-item';
+    li.innerHTML = `<button class="nav-link ${i===0?'active':''}" id="${tabId}" data-bs-toggle="tab" data-bs-target="#${panelId}" type="button" role="tab">${m.label}</button>`;
+    tabs.appendChild(li);
+
+    const pane = document.createElement('div');
+    pane.className = `tab-pane fade ${i===0?'show active':''}`;
+    pane.id = panelId;
+    pane.setAttribute('role','tabpanel');
+    pane.innerHTML = `
+      <div class="tab-card">
+        <div class="tab-filters mb-3">
+          <div class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Año</label>
+              <select class="form-select form-select-sm" data-filter="year" data-metric="${m.id}" multiple size="2"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Semana</label>
+              <select class="form-select form-select-sm" data-filter="week" data-metric="${m.id}" multiple size="2"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Área</label>
+              <select class="form-select form-select-sm" data-filter="area" data-metric="${m.id}" multiple size="2"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Subárea</label>
+              <select class="form-select form-select-sm" data-filter="subarea" data-metric="${m.id}" multiple size="2"></select>
+            </div>
+          </div>
+          <div class="small help mt-2 d-flex justify-content-between flex-wrap">
+            <span><i class="bi bi-info-circle"></i> Ctrl/Cmd = multi-selección. Los filtros se combinan con los globales.</span>
+            <button class="btn btn-link btn-sm p-0 reset-tab-filters" data-metric="${m.id}"><i class="bi bi-arrow-counterclockwise"></i> Limpiar filtros de pestaña</button>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-8">
+            <div class="chart-holder"><canvas id="chart-${m.id}"></canvas></div>
+          </div>
+          <div class="col-lg-4 d-flex flex-column gap-3" id="cards-${m.id}"></div>
+        </div>
+      </div>`;
+    content.appendChild(pane);
+  });
+}
+
+function populateTabFilterOptions(metricId){
+  const qSel = (f) => document.querySelector(`[data-filter="${f}"][data-metric="${metricId}"]`);
+  const yearSel = qSel('year');
+  const weekSel = qSel('week');
+  const areaSel = qSel('area');
+  const subSel = qSel('subarea');
+  yearSel.innerHTML = '';
+  DASHBOARD_DATA.years.forEach((y,i) => yearSel.innerHTML += `<option value="${i}">${y}</option>`);
+  weekSel.innerHTML = '';
+  ALL_WEEKS.forEach(w => weekSel.innerHTML += `<option value="${w}">Semana ${w}</option>`);
+  areaSel.innerHTML = '';
+  DASHBOARD_DATA.areas.forEach((a,i) => areaSel.innerHTML += `<option value="${i}">${a}</option>`);
+  subSel.innerHTML = '';
+  DASHBOARD_DATA.subareas.forEach((s,i) => subSel.innerHTML += `<option value="${i}">${s}</option>`);
+}
+
+function readTabFilters(metricId){
+  const qSel = (f) => document.querySelector(`[data-filter="${f}"][data-metric="${metricId}"]`);
+  return {
+    years:    readMultiSelect(qSel('year')),
+    weeks:    readMultiSelect(qSel('week')),
+    areas:    readMultiSelect(qSel('area')),
+    subareas: readMultiSelect(qSel('subarea'))
+  };
+}
+
+function combinedSel(tabSel){
+  const merge = (g, t) => {
+    if (g.size === 0) return t;
+    if (t.size === 0) return g;
+    const out = new Set();
+    for (const v of t) if (g.has(v)) out.add(v);
+    return out;
+  };
+  return {
+    years:    merge(state.yearSel, tabSel.years),
+    areas:    merge(state.areaSel, tabSel.areas),
+    subareas: merge(state.subareaSel, tabSel.subareas),
+    weeks:    tabSel.weeks
+  };
+}
+
+const tabCharts = {};
+
+function renderTab(metricKey, metricId){
+  const tabSel = readTabFilters(metricId);
+  const sel = combinedSel(tabSel);
+  const idx = filterRowIdx(sel);
+
+  const groups = groupByYearWeek(idx, metricKey);
+  const labels = groups.map(g => shortPeriodLabel(g.year, g.week));
+  const values = groups.map(g => Math.round(g.sum * 100) / 100);
+  const ceds = groups.map(g => g.ced.size);
+  const deltas = values.map((v,i) => {
+    if (i===0) return null;
+    const prev = values[i-1];
+    if (!prev) return null;
+    return ((v - prev) / prev) * 100;
+  });
+
+  const ctx = document.getElementById('chart-'+metricId).getContext('2d');
+  if (tabCharts[metricId]) tabCharts[metricId].destroy();
+  tabCharts[metricId] = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'Horas', data: values, borderColor:'#E30613', backgroundColor:'rgba(227,6,19,.15)', fill:true, tension:.3, pointRadius:3, yAxisID:'y' },
+        { type:'bar', label:'Colaboradores únicos', data: ceds, backgroundColor:'rgba(14,165,233,.55)', yAxisID:'y1', borderRadius:4 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ position:'top' },
+        tooltip:{
+          callbacks:{
+            title: (ctx) => {
+              const i = ctx[0].dataIndex;
+              return 'Semana ' + groups[i].week + ' — ' + groups[i].year;
+            },
+            label: (c) => c.dataset.type === 'bar' ? c.dataset.label+': '+fmtNum(c.parsed.y) : c.dataset.label+': '+fmtHoras(c.parsed.y),
+            afterLabel: (c) => {
+              if (c.dataset.type === 'bar') return '';
+              const d = deltas[c.dataIndex];
+              return d === null ? '' : 'Δ vs semana anterior: '+fmtPct(d);
+            }
+          }
+        }
+      },
+      scales:{
+        y:{ position:'left', title:{ display:true, text:'Horas' }, ticks:{ callback: v => fmtNum(v) } },
+        y1:{ position:'right', title:{ display:true, text:'Colaboradores' }, grid:{ drawOnChartArea:false }, ticks:{ callback: v => fmtNum(v) } },
+        x:{ ticks: { autoSkip: true, maxRotation: 45, minRotation: 0 } }
+      }
+    }
+  });
+
+  // Cards
+  const sumMetricVal = sumMetric(idx, metricKey);
+  const sumTotalVal  = sumMetric(idx, TOTAL_KEY);
+  const proportion = sumTotalVal > 0 ? (sumMetricVal / sumTotalVal) * 100 : 0;
+
+  const latestIdx = values.length - 1;
+  const prevIdx = latestIdx - 1;
+  const latestVal = values[latestIdx];
+  const prevVal   = prevIdx >= 0 ? values[prevIdx] : null;
+  const latestDelta = latestIdx >= 0 ? deltas[latestIdx] : null;
+  const latestCed = ceds[latestIdx];
+  const latestLabel = latestIdx >= 0 ? ('Sem ' + groups[latestIdx].week + ' · ' + groups[latestIdx].year) : '-';
+
+  const avgVal = values.length ? values.reduce((a,b)=>a+b,0) / values.length : 0;
+
+  const cardsHost = document.getElementById('cards-'+metricId);
+  const deltaClass = latestDelta === null ? 'flat' : (latestDelta > 0 ? 'up' : (latestDelta < 0 ? 'down' : 'flat'));
+  const deltaIcon  = latestDelta === null ? 'bi-dash' : (latestDelta > 0 ? 'bi-arrow-up-right' : (latestDelta < 0 ? 'bi-arrow-down-right' : 'bi-dash'));
+  cardsHost.innerHTML = `
+    <div class="var-card">
+      <div class="desc">Último periodo · ${latestLabel}</div>
+      <div class="d-flex align-items-center justify-content-between mt-1">
+        <div class="value fw-bold fs-4">${fmtHoras(latestVal || 0)}</div>
+        <div class="delta ${deltaClass}"><i class="bi ${deltaIcon}"></i> ${fmtPct(latestDelta)}</div>
+      </div>
+      <div class="help mt-1">vs. semana anterior ${prevVal !== null ? '('+fmtHoras(prevVal)+')' : ''}</div>
+    </div>
+    <div class="var-card">
+      <div class="desc">% sobre Total Horas Laboradas</div>
+      <div class="value fw-bold fs-4 mt-1">${fmtNum(proportion, 2)}%</div>
+      <div class="help mt-1">${fmtHoras(sumMetricVal)} de ${fmtHoras(sumTotalVal)}</div>
+    </div>
+    <div class="var-card">
+      <div class="desc">Promedio semanal</div>
+      <div class="value fw-bold fs-4 mt-1">${fmtHoras(avgVal)}</div>
+      <div class="help mt-1">${values.length} periodos evaluados</div>
+    </div>
+    <div class="var-card">
+      <div class="desc">Colaboradores último periodo</div>
+      <div class="value fw-bold fs-4 mt-1">${fmtNum(latestCed || 0)}</div>
+      <div class="help mt-1">Cédulas únicas pagadas</div>
+    </div>
+  `;
+}
+
+function renderAllTabs(){
+  METRICS.forEach(m => renderTab(m.key, m.id));
+}
+
+function render(){
+  const sel = {
+    years: state.yearSel,
+    areas: state.areaSel,
+    subareas: state.subareaSel,
+    weeks: new Set()
+  };
+  const idx = filterRowIdx(sel);
+  renderKPIs(idx);
+  renderMainChart(idx);
+  renderAreaChart(idx);
+  renderAllTabs();
+}
+
+// ---- CSV Export ----
+function exportCSV(){
+  const sel = { years: state.yearSel, areas: state.areaSel, subareas: state.subareaSel, weeks: new Set() };
+  const idx = filterRowIdx(sel);
+  const groups = groupByYearWeek(idx, TOTAL_KEY);
+  const header = ['Anio','Semana','Total Horas Laboradas','Colaboradores'];
+  METRICS.forEach(m => header.push(m.label));
+  const lines = [header.join(',')];
+  for (const g of groups) {
+    const mIdx = filterRowIdx({
+      years: new Set([g.yearIdx]),
+      areas: sel.areas,
+      subareas: sel.subareas,
+      weeks: new Set([g.week])
+    });
+    const row = [g.year, g.week, Math.round(g.sum), g.ced.size];
+    METRICS.forEach(m => row.push(Math.round(sumMetric(mIdx, m.key)*100)/100));
+    lines.push(row.join(','));
+  }
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'horas_labor_'+(new Date().toISOString().slice(0,10))+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  Swal.fire({
+    icon:'success',
+    title:'Exportación lista',
+    text:'Se generó el CSV con '+(lines.length-1)+' filas agregadas por semana.',
+    confirmButtonColor:'#E30613',
+    timer: 2500
+  });
+}
+
+function init(){
+  populateSelect(document.getElementById('fYear'), DASHBOARD_DATA.years);
+  populateSelect(document.getElementById('fArea'), DASHBOARD_DATA.areas);
+  populateSelect(document.getElementById('fSubarea'), DASHBOARD_DATA.subareas);
+
+  buildTabs();
+  METRICS.forEach(m => populateTabFilterOptions(m.id));
+
+  ['fYear','fArea','fSubarea'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+      state.yearSel = readMultiSelect(document.getElementById('fYear'));
+      state.areaSel = readMultiSelect(document.getElementById('fArea'));
+      state.subareaSel = readMultiSelect(document.getElementById('fSubarea'));
+      render();
+    });
+  });
+
+  document.getElementById('btnResetGlobal').addEventListener('click', () => {
+    ['fYear','fArea','fSubarea'].forEach(id => {
+      const el = document.getElementById(id);
+      Array.from(el.options).forEach(o => o.selected = false);
+    });
+    state.yearSel.clear(); state.areaSel.clear(); state.subareaSel.clear();
+    render();
+  });
+
+  document.getElementById('varTabContent').addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('select[data-metric]')) {
+      const mid = t.dataset.metric;
+      const m = METRICS.find(x => x.id === mid);
+      if (m) renderTab(m.key, m.id);
+    }
+  });
+  document.getElementById('varTabContent').addEventListener('click', (e) => {
+    const btn = e.target.closest('.reset-tab-filters');
+    if (btn) {
+      const mid = btn.dataset.metric;
+      document.querySelectorAll(`select[data-metric="${mid}"]`).forEach(sel => {
+        Array.from(sel.options).forEach(o => o.selected = false);
+      });
+      const m = METRICS.find(x => x.id === mid);
+      if (m) renderTab(m.key, m.id);
+    }
+  });
+
+  document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+
+  render();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
