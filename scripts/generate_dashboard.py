@@ -183,22 +183,31 @@ def build_dashboard_data(agg: pd.DataFrame) -> dict:
     area_col = DIMENSION_COLUMNS["area"]
     sub_col = DIMENSION_COLUMNS["subarea"]
 
-    years = sorted(agg[anio_col].unique().tolist()) if anio_col in agg.columns else [0]
-    areas = sorted(agg[area_col].unique().tolist()) if area_col in agg.columns else ["SIN DATO"]
-    subareas = sorted(agg[sub_col].unique().tolist()) if sub_col in agg.columns else ["SIN DATO"]
-    cedulas = sorted(agg[cedula_col].unique().tolist()) if cedula_col in agg.columns else ["0"]
+    years = sorted(int(y) for y in agg[anio_col].unique() if not pd.isna(y)) if anio_col in agg.columns else [0]
+    areas = sorted(str(a) if not pd.isna(a) else "SIN DATO" for a in agg[area_col].unique()) if area_col in agg.columns else ["SIN DATO"]
+    subareas = sorted(str(s) if not pd.isna(s) else "SIN DATO" for s in agg[sub_col].unique()) if sub_col in agg.columns else ["SIN DATO"]
+    cedulas = sorted(str(c) for c in agg[cedula_col].unique() if not pd.isna(c)) if cedula_col in agg.columns else ["0"]
 
     year_idx = {y: i for i, y in enumerate(years)}
     area_idx = {a: i for i, a in enumerate(areas)}
     sub_idx = {s: i for i, s in enumerate(subareas)}
     ced_idx = {c: i for i, c in enumerate(cedulas)}
 
+    # Normalise area/subarea/cedula columns in agg to str so mapping never produces NaN
+    if area_col in agg.columns:
+        agg = agg.copy()
+        agg[area_col] = agg[area_col].apply(lambda v: "SIN DATO" if pd.isna(v) else str(v))
+    if sub_col in agg.columns:
+        agg[sub_col] = agg[sub_col].apply(lambda v: "SIN DATO" if pd.isna(v) else str(v))
+    if cedula_col in agg.columns:
+        agg[cedula_col] = agg[cedula_col].apply(lambda v: "SIN_CEDULA" if pd.isna(v) else str(v))
+
     data = {
-        "y": agg[anio_col].map(year_idx).astype(int).tolist() if anio_col in agg.columns else [0] * len(agg),
+        "y": agg[anio_col].map(year_idx).fillna(0).astype(int).tolist() if anio_col in agg.columns else [0] * len(agg),
         "w": agg["__Semana"].astype(int).tolist(),
-        "a": agg[area_col].map(area_idx).astype(int).tolist() if area_col in agg.columns else [0] * len(agg),
-        "s": agg[sub_col].map(sub_idx).astype(int).tolist() if sub_col in agg.columns else [0] * len(agg),
-        "c": agg[cedula_col].map(ced_idx).astype(int).tolist() if cedula_col in agg.columns else [0] * len(agg),
+        "a": agg[area_col].map(area_idx).fillna(0).astype(int).tolist() if area_col in agg.columns else [0] * len(agg),
+        "s": agg[sub_col].map(sub_idx).fillna(0).astype(int).tolist() if sub_col in agg.columns else [0] * len(agg),
+        "c": agg[cedula_col].map(ced_idx).fillna(0).astype(int).tolist() if cedula_col in agg.columns else [0] * len(agg),
     }
 
     for i, col in enumerate(METRIC_COLUMNS):

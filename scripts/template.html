@@ -51,9 +51,47 @@
   .tab-filters { background:#f8fafc; padding:.85rem; border-radius: 10px; border:1px solid #e5e7eb; }
   .empty-msg { color:var(--muted); font-style: italic; padding: 2rem; text-align:center; }
   .metric-pill { font-size: .78rem; background:#fef3c7; color:#92400e; padding:.15rem .55rem; border-radius: 9999px; }
+
+  /* ── Dropdown filter ─────────────────────────────────────── */
+  .df-wrap { position: relative; }
+  .df-btn {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    width: 100%; padding: .48rem .85rem; background: #fff;
+    border: 1px solid #d1d5db; border-radius: 10px; cursor: pointer;
+    font-size: .88rem; color: var(--ink); transition: border-color .15s, box-shadow .15s;
+    user-select: none;
+  }
+  .df-btn:hover { border-color: #9ca3af; }
+  .df-btn.open  { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(227,6,19,.12); }
+  .df-btn .df-label { font-weight: 600; font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .df-btn .df-val   { flex:1; text-align:left; font-size:.84rem; color: var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 180px; }
+  .df-btn .df-badge { background: var(--brand); color:#fff; font-size:.7rem; font-weight:700; border-radius:9999px; padding:.05rem .42rem; min-width:18px; text-align:center; flex-shrink:0; }
+  .df-btn .df-caret { color: var(--muted); flex-shrink:0; transition: transform .2s; }
+  .df-btn.open .df-caret { transform: rotate(180deg); }
+
+  .df-panel {
+    position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%; z-index: 999;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: .5rem 0;
+    max-height: 280px; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .df-panel.hidden { display: none; }
+  .df-search-wrap { padding: .35rem .6rem; border-bottom: 1px solid #f1f5f9; }
+  .df-search { width: 100%; border: 1px solid #e5e7eb; border-radius: 7px; padding: .28rem .6rem; font-size:.82rem; outline:none; }
+  .df-search:focus { border-color: var(--brand); }
+  .df-actions { display:flex; align-items:center; gap:.4rem; padding:.3rem .7rem; border-bottom:1px solid #f1f5f9; }
+  .df-actions button { font-size:.75rem; color: var(--brand); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline; }
+  .df-list { overflow-y: auto; flex:1; padding: .25rem 0; }
+  .df-item { display: flex; align-items: center; gap: .55rem; padding: .3rem .75rem; cursor: pointer; font-size: .85rem; transition: background .1s; }
+  .df-item:hover { background: #f8fafc; }
+  .df-item input[type=checkbox] { accent-color: var(--brand); width:15px; height:15px; cursor:pointer; flex-shrink:0; }
+  .df-item label { cursor: pointer; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* ── End dropdown filter ─────────────────────────────────── */
+
   @media (max-width: 768px){
     .chart-holder { height: 300px; }
     .chart-holder-lg { height: 320px; }
+    .df-btn .df-val { max-width: 120px; }
   }
 </style>
 </head>
@@ -83,19 +121,16 @@
     </div>
     <div class="row g-3">
       <div class="col-md-4">
-        <label class="form-label fw-semibold small">Año</label>
-        <select id="fYear" class="form-select" multiple size="3"></select>
+        <div class="df-wrap" id="df-year"></div>
       </div>
       <div class="col-md-4">
-        <label class="form-label fw-semibold small">Área</label>
-        <select id="fArea" class="form-select" multiple size="5"></select>
+        <div class="df-wrap" id="df-area"></div>
       </div>
       <div class="col-md-4">
-        <label class="form-label fw-semibold small">Subárea</label>
-        <select id="fSubarea" class="form-select" multiple size="5"></select>
+        <div class="df-wrap" id="df-subarea"></div>
       </div>
     </div>
-    <div class="small help mt-2"><i class="bi bi-info-circle"></i> Mantén Ctrl/Cmd para seleccionar varios. Vacío = todos. <strong>Granularidad temporal: semanal</strong> (2025: 1-27 individuales + semanas-bloque 28,31,34,37,40,43,46,49,52 ya consolidadas en origen; 2026: viene bloqueada).</div>
+    <div class="small help mt-2"><i class="bi bi-info-circle"></i> Selecciona múltiples opciones en los filtros. Vacío = todos. <strong>Granularidad temporal: semanal</strong> (2025: 1-27 individuales + semanas-bloque 28,31,34,37,40,43,46,49,52 ya consolidadas en origen; 2026: viene bloqueada).</div>
   </div>
 
   <!-- KPIs -->
@@ -202,19 +237,90 @@ function fmtPct(n){
   return sign + n.toFixed(1) + '%';
 }
 
-function populateSelect(el, items, labels){
-  el.innerHTML = '';
-  items.forEach((v, i) => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = labels ? labels[i] : v;
-    el.appendChild(opt);
-  });
-}
-
 function readMultiSelect(el){
   return new Set(Array.from(el.selectedOptions).map(o => +o.value));
 }
+
+// ── Global dropdown filters ──────────────────────────────────────────────────
+function buildDropdown(wrapId, labelText, items, onChangeCb) {
+  const wrap = document.getElementById(wrapId);
+  const listId = wrapId + '-list';
+  wrap.innerHTML = `
+    <button class="df-btn" id="${wrapId}-btn" type="button">
+      <span class="df-label">${labelText}</span>
+      <span class="df-val" id="${wrapId}-val">Todos</span>
+      <span class="df-badge" id="${wrapId}-badge" style="display:none">0</span>
+      <i class="bi bi-chevron-down df-caret"></i>
+    </button>
+    <div class="df-panel hidden" id="${wrapId}-panel">
+      <div class="df-search-wrap">
+        <input class="df-search" id="${wrapId}-search" type="text" placeholder="Buscar…">
+      </div>
+      <div class="df-actions">
+        <button type="button" data-df-all="${wrapId}">Seleccionar todo</button>
+        <button type="button" data-df-none="${wrapId}">Deseleccionar todo</button>
+      </div>
+      <div class="df-list" id="${listId}">
+        ${items.map((item, i) => `<div class="df-item"><input type="checkbox" id="${wrapId}-cb-${i}" value="${i}" data-df="${wrapId}"><label for="${wrapId}-cb-${i}">${item}</label></div>`).join('')}
+      </div>
+    </div>`;
+
+  document.getElementById(wrapId+'-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen = !document.getElementById(wrapId+'-panel').classList.contains('hidden');
+    document.querySelectorAll('.df-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.df-btn').forEach(b => b.classList.remove('open'));
+    if (!isOpen) {
+      document.getElementById(wrapId+'-panel').classList.remove('hidden');
+      document.getElementById(wrapId+'-btn').classList.add('open');
+      document.getElementById(wrapId+'-search').focus();
+    }
+  });
+
+  document.getElementById(wrapId+'-search').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll(`#${listId} .df-item`).forEach(item => {
+      item.style.display = item.querySelector('label').textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+
+  document.getElementById(listId).addEventListener('change', () => {
+    _updateDfLabel(wrapId, items);
+    if (onChangeCb) onChangeCb();
+  });
+
+  wrap.addEventListener('click', e => {
+    if (e.target.dataset.dfAll === wrapId) {
+      document.querySelectorAll(`#${listId} input[type=checkbox]`).forEach(cb => cb.checked = true);
+      _updateDfLabel(wrapId, items); if (onChangeCb) onChangeCb();
+    }
+    if (e.target.dataset.dfNone === wrapId) {
+      document.querySelectorAll(`#${listId} input[type=checkbox]`).forEach(cb => cb.checked = false);
+      _updateDfLabel(wrapId, items); if (onChangeCb) onChangeCb();
+    }
+  });
+}
+
+function _updateDfLabel(wrapId, items) {
+  const checked = document.querySelectorAll(`#${wrapId}-list input[type=checkbox]:checked`);
+  const n = checked.length;
+  const valEl = document.getElementById(wrapId+'-val');
+  const bdgEl = document.getElementById(wrapId+'-badge');
+  if (n === 0 || n === items.length) {
+    valEl.textContent = 'Todos'; bdgEl.style.display = 'none';
+  } else if (n === 1) {
+    valEl.textContent = items[+checked[0].value]; bdgEl.style.display = 'none';
+  } else {
+    valEl.textContent = n + ' seleccionados'; bdgEl.textContent = n; bdgEl.style.display = '';
+  }
+}
+
+function readDropdown(wrapId) {
+  const checked = document.querySelectorAll(`#${wrapId}-list input[type=checkbox]:checked`);
+  if (!checked.length) return new Set();
+  return new Set(Array.from(checked).map(cb => +cb.value));
+}
+// ── End dropdown filters ──────────────────────────────────────────────────────
 
 // ---- Filtering core ----
 function filterRowIdx(sel) {
@@ -646,29 +752,33 @@ function exportCSV(){
 }
 
 function init(){
-  populateSelect(document.getElementById('fYear'), DASHBOARD_DATA.years);
-  populateSelect(document.getElementById('fArea'), DASHBOARD_DATA.areas);
-  populateSelect(document.getElementById('fSubarea'), DASHBOARD_DATA.subareas);
+  const onGlobalChange = () => {
+    state.yearSel    = readDropdown('df-year');
+    state.areaSel    = readDropdown('df-area');
+    state.subareaSel = readDropdown('df-subarea');
+    render();
+  };
+
+  buildDropdown('df-year',    'Año',     DASHBOARD_DATA.years,    onGlobalChange);
+  buildDropdown('df-area',    'Área',    DASHBOARD_DATA.areas,    onGlobalChange);
+  buildDropdown('df-subarea', 'Subárea', DASHBOARD_DATA.subareas, onGlobalChange);
 
   buildTabs();
   METRICS.forEach(m => populateTabFilterOptions(m.id));
 
-  ['fYear','fArea','fSubarea'].forEach(id => {
-    document.getElementById(id).addEventListener('change', () => {
-      state.yearSel = readMultiSelect(document.getElementById('fYear'));
-      state.areaSel = readMultiSelect(document.getElementById('fArea'));
-      state.subareaSel = readMultiSelect(document.getElementById('fSubarea'));
-      render();
-    });
-  });
-
   document.getElementById('btnResetGlobal').addEventListener('click', () => {
-    ['fYear','fArea','fSubarea'].forEach(id => {
-      const el = document.getElementById(id);
-      Array.from(el.options).forEach(o => o.selected = false);
+    [['df-year', DASHBOARD_DATA.years], ['df-area', DASHBOARD_DATA.areas], ['df-subarea', DASHBOARD_DATA.subareas]].forEach(([wid, items]) => {
+      document.querySelectorAll(`#${wid}-list input[type=checkbox]`).forEach(cb => cb.checked = false);
+      _updateDfLabel(wid, items);
     });
     state.yearSel.clear(); state.areaSel.clear(); state.subareaSel.clear();
     render();
+  });
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.df-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.df-btn').forEach(b => b.classList.remove('open'));
   });
 
   document.getElementById('varTabContent').addEventListener('change', (e) => {
