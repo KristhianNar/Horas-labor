@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 
 # ----------------------------------------------------------------------------
 # Rutas del proyecto
@@ -229,7 +229,7 @@ def build_dashboard_data(agg: pd.DataFrame) -> dict:
 def render(dashboard_data: dict, source_file: str, rows_count: int) -> str:
     env = Environment(
         loader=FileSystemLoader(str(SCRIPTS_DIR)),
-        autoescape=select_autoescape(disabled_extensions=("html",), default=False),
+        autoescape=False,
         variable_start_string="{{ ",
         variable_end_string=" }}",
     )
